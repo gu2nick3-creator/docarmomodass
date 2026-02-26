@@ -407,7 +407,9 @@ const AdminProducts = () => {
                       <span className="font-medium">{p.name}</span>
                     </div>
                   </TableCell>
-                  <TableCell>R$ {p.price.toFixed(2).replace('.', ',')}</TableCell>
+                   <TableCell>
+                      R$ {Number(p.price || 0).toFixed(2).replace('.', ',')}
+                   </TableCell>
                   <TableCell>{categories.find(c => c.id === p.categoryId)?.name || '-'}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
