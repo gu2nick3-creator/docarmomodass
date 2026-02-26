@@ -80,51 +80,34 @@ const CheckoutPage = () => {
 
     setLoading(true);
     try {
-      // Monta itens pro Mercado Pago via backend
+      // Gera um ID simples pro pedido (o backend usa external_reference)
+      // Depois você pode trocar por um orderId vindo do /orders
+      const orderId = Date.now().toString();
+
       const mpItems = items.map(i => ({
-        id: String(i.product.id),
         title: i.product.name,
         quantity: Number(i.quantity || 1),
-        currency_id: 'BRL',
         unit_price: Number(i.product.price || 0),
-        // extras úteis pra você registrar no pedido
-        selectedSize: i.selectedSize,
-        selectedColor: i.selectedColor,
-        image: i.product.image || '',
       }));
 
-      const payload = {
-        customer: {
-          name: form.name.trim(),
-          email: form.email.trim(),
-          cpf: form.cpf.trim(),
-          phone: form.phone.trim(),
+      const res = await request<{
+        preferenceId: string;
+        init_point?: string;
+        sandbox_init_point?: string;
+      }>('/mercadopago/preference', {
+        method: 'POST',
+        body: {
+          orderId,
+          items: mpItems,
+          customer: { name: form.name.trim(), email: form.email.trim() },
         },
-        shipping: {
-          street: form.street.trim(),
-          number: form.number.trim(),
-          complement: form.complement.trim(),
-          neighborhood: form.neighborhood.trim(),
-          city: form.city.trim(),
-          state: form.state.trim(),
-          cep: form.cep.trim(),
-        },
-        items: mpItems,
-        total: Number(total || 0),
-      };
+      });
 
-      // 🔥 endpoint do backend (ajuste se no seu backend for outro)
-      const res = await request<{ init_point?: string; sandbox_init_point?: string }>(
-        '/mercadopago/checkout',
-        { method: 'POST', body: payload },
-      );
-
-      const link = res?.init_point || res?.sandbox_init_point;
-
+      const link = res.init_point || res.sandbox_init_point;
       if (!link) {
         toast({
-          title: 'Checkout criado, mas faltou link de pagamento',
-          description: 'Verifique o endpoint /mercadopago/checkout no backend.',
+          title: 'Preferência criada, mas sem link de pagamento',
+          description: 'Verifique o retorno do /mercadopago/preference no backend.',
           variant: 'destructive',
         });
         return;
@@ -132,14 +115,16 @@ const CheckoutPage = () => {
 
       toast({ title: 'Redirecionando para o Mercado Pago...' });
 
-      // Você pode limpar agora (checkout já gerado)
+      // opcional: salvar localmente o orderId pra tela de retorno
+      localStorage.setItem('last_order_id', orderId);
+      localStorage.setItem('last_order_total', String(total || 0));
+
+      // Limpa o carrinho depois que a preferência foi criada
       clearCart();
 
-      // Redireciona pro pagamento
       window.location.href = link;
     } catch (err) {
-      const msg =
-        err instanceof ApiError ? err.message : 'Erro ao iniciar pagamento no Mercado Pago';
+      const msg = err instanceof ApiError ? err.message : 'Erro ao iniciar pagamento no Mercado Pago';
       toast({ title: msg, variant: 'destructive' });
     } finally {
       setLoading(false);
