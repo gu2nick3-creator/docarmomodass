@@ -84,8 +84,14 @@ const AdminProducts = () => {
   };
 
   const openEdit = (p: Product) => {
-    setEditing(p);
-    setForm({ ...p });
+    const id = String((p as any).id ?? '').trim();
+    if (!id || id === ':p') {
+      toast({ title: 'Produto inválido (sem ID). Recarregue a página.', variant: 'destructive' });
+      return;
+    }
+    const normalized = { ...(p as any), id } as Product;
+    setEditing(normalized);
+    setForm({ ...normalized });
     setOpen(true);
   };
 
@@ -134,18 +140,28 @@ const AdminProducts = () => {
   };
 
   const handleSave = async () => {
-    if (!form.name || !form.price || !form.categoryId) {
+    if (!form.name || !form.categoryId) {
       toast({ title: 'Preencha os campos obrigatórios', variant: 'destructive' });
       return;
     }
 
+    const payload: any = {
+      ...form,
+      price: Number(form.price || 0),
+    };
+
     setSaving(true);
     try {
       if (editing) {
-        await productService.update(editing.id, form);
+        const id = String((editing as any).id ?? '').trim();
+        if (!id || id === ':p') {
+          toast({ title: 'Não foi possível salvar: produto sem ID válido.', variant: 'destructive' });
+          return;
+        }
+        await productService.update(id, payload);
         toast({ title: 'Produto atualizado com sucesso!' });
       } else {
-        await productService.create(form as Omit<Product, 'id'>);
+        await productService.create(payload as Omit<Product, 'id'>);
         toast({ title: 'Produto cadastrado com sucesso!' });
       }
       setOpen(false);
@@ -159,10 +175,16 @@ const AdminProducts = () => {
   };
 
   const handleDelete = async (id: string) => {
+    const cleanId = String(id ?? '').trim();
+    if (!cleanId || cleanId === ':p') {
+      toast({ title: 'Não foi possível excluir: ID inválido.', variant: 'destructive' });
+      return;
+    }
+
     if (!confirm('Tem certeza que deseja excluir este produto?')) return;
 
     try {
-      await productService.delete(id);
+      await productService.delete(cleanId);
       toast({ title: 'Produto excluído.' });
       await loadAll();
     } catch (err) {
@@ -407,13 +429,11 @@ const AdminProducts = () => {
                       <span className="font-medium">{p.name}</span>
                     </div>
                   </TableCell>
-                   <TableCell>
-                      R$ {Number(p.price || 0).toFixed(2).replace('.', ',')}
-                   </TableCell>
+                  <TableCell>R$ {Number(p.price || 0).toFixed(2).replace('.', ',')}</TableCell>
                   <TableCell>{categories.find(c => c.id === p.categoryId)?.name || '-'}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      {p.colors?.map(c => (
+                      {(p.colors ?? []).map(c => (
                         <span
                           key={c.name}
                           className="h-4 w-4 rounded-full border"
