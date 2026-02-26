@@ -49,7 +49,6 @@ const AdminLogin = () => {
             Entrar
           </Button>
         </form>
-        <p className="mt-4 text-center text-xs text-muted-foreground">Demo: admin@docarmomodas.com / admin123</p>
       </div>
     </div>
   );
