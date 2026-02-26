@@ -17,9 +17,6 @@ import { ApiError } from '@/services/api';
 
 type Category = { id: string; name: string };
 type Subcategory = { id: string; name: string; categoryId: string };
-
-// No form o front usa objeto, mas o backend pode devolver string[].
-// Vamos tolerar os dois.
 type ColorObj = { name: string; hex: string; inStock?: boolean };
 
 const emptyProduct = (): Partial<Product> => ({
@@ -33,40 +30,46 @@ const emptyProduct = (): Partial<Product> => ({
   image: '',
 });
 
+function safeString(v: any) {
+  return String(v ?? '').trim();
+}
+
 function normalizeProductFromApi(p: any): Product {
-  const id = String(p?.id ?? '').trim();
+  const id = safeString(p?.id);
   const priceNum = Number(p?.price ?? 0);
 
-  // colors pode vir:
-  // - [{name, hex}] (front)
-  // - ["#000000", "#ffffff"] (backend)
   const colors: ColorObj[] = Array.isArray(p?.colors)
     ? p.colors.map((c: any) => {
-        if (typeof c === 'string') {
-          return { name: c, hex: c, inStock: true };
-        }
+        if (typeof c === 'string') return { name: c, hex: c, inStock: true };
         return {
-          name: String(c?.name ?? c?.hex ?? ''),
-          hex: String(c?.hex ?? ''),
+          name: safeString(c?.name ?? c?.hex),
+          hex: safeString(c?.hex),
           inStock: c?.inStock ?? true,
         };
       })
     : [];
 
-  const sizes: string[] = Array.isArray(p?.sizes) ? p.sizes.map((s: any) => String(s)) : [];
+  const sizes: string[] = Array.isArray(p?.sizes) ? p.sizes.map((s: any) => safeString(s)) : [];
 
   return {
-    ...p,
+    ...(p as any),
     id,
     price: priceNum,
     colors,
     sizes,
-    categoryId: String(p?.categoryId ?? ''),
-    subcategoryId: String(p?.subcategoryId ?? ''),
-    name: String(p?.name ?? ''),
+    categoryId: safeString(p?.categoryId ?? p?.category_id),
+    subcategoryId: safeString(p?.subcategoryId ?? p?.subcategory_id),
+    name: safeString(p?.name),
     description: String(p?.description ?? ''),
-    image: String(p?.image ?? ''),
+    image: safeString(p?.image),
   } as Product;
+}
+
+function unwrapArray(x: any) {
+  if (Array.isArray(x)) return x;
+  if (Array.isArray(x?.items)) return x.items;
+  if (Array.isArray(x?.data)) return x.data;
+  return [];
 }
 
 const AdminProducts = () => {
@@ -97,11 +100,19 @@ const AdminProducts = () => {
         subcategoryService.getAll(),
       ]);
 
-      const prodsArr = Array.isArray(prods) ? prods : (prods?.items ?? []);
-      setProductsList(prodsArr.map((p: any) => normalizeProductFromApi(p)));
+      const prodsArr = unwrapArray(prods);
+      const catsArr = unwrapArray(cats);
+      const subsArr = unwrapArray(subs);
 
-      setCategories(Array.isArray(cats) ? cats : (cats?.items ?? []));
-      setSubcategoriesAll(Array.isArray(subs) ? subs : (subs?.items ?? []));
+      setProductsList(prodsArr.map((p: any) => normalizeProductFromApi(p)));
+      setCategories(catsArr.map((c: any) => ({ id: safeString(c.id), name: String(c.name ?? '') })));
+      setSubcategoriesAll(
+        subsArr.map((s: any) => ({
+          id: safeString(s.id),
+          name: String(s.name ?? ''),
+          categoryId: safeString(s.categoryId ?? s.category_id),
+        })),
+      );
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Erro ao carregar dados';
       toast({ title: message, variant: 'destructive' });
@@ -116,8 +127,9 @@ const AdminProducts = () => {
   }, []);
 
   const subcategories = useMemo(() => {
-    if (!form.categoryId) return [];
-    return subcategoriesAll.filter(s => s.categoryId === form.categoryId);
+    const catId = safeString(form.categoryId);
+    if (!catId) return [];
+    return subcategoriesAll.filter(s => safeString(s.categoryId) === catId);
   }, [form.categoryId, subcategoriesAll]);
 
   const openCreate = () => {
@@ -127,7 +139,7 @@ const AdminProducts = () => {
   };
 
   const openEdit = (p: Product) => {
-    const id = String((p as any).id ?? '').trim();
+    const id = safeString((p as any).id);
     if (!id || id === ':p') {
       toast({ title: 'Produto inválido (sem ID). Recarregue a página.', variant: 'destructive' });
       return;
@@ -192,21 +204,17 @@ const AdminProducts = () => {
       return;
     }
 
-    // backend espera:
-    // - price number
-    // - sizes string[]
-    // - colors string[] (vamos mandar HEX)
     const payload: any = {
-      name: String(form.name ?? '').trim(),
+      name: safeString(form.name),
       price: Number(form.price || 0),
-      categoryId: String(form.categoryId ?? '').trim(),
-      subcategoryId: String(form.subcategoryId ?? '').trim(),
+      categoryId: safeString(form.categoryId),
+      subcategoryId: safeString(form.subcategoryId),
       description: String(form.description ?? ''),
-      image: String(form.image ?? ''),
-      sizes: Array.isArray(form.sizes) ? form.sizes.map(s => String(s)) : [],
+      image: safeString(form.image),
+      sizes: Array.isArray(form.sizes) ? form.sizes.map(s => safeString(s)) : [],
       colors: Array.isArray(form.colors)
         ? (form.colors as any[])
-            .map((c: any) => String(c?.hex || c?.name || '').trim())
+            .map((c: any) => safeString(c?.hex || c?.name))
             .filter(Boolean)
         : [],
     };
@@ -214,7 +222,7 @@ const AdminProducts = () => {
     setSaving(true);
     try {
       if (editing) {
-        const id = String((editing as any).id ?? '').trim();
+        const id = safeString((editing as any).id);
         if (!id || id === ':p') {
           toast({ title: 'Não foi possível salvar: produto sem ID válido.', variant: 'destructive' });
           return;
@@ -236,7 +244,7 @@ const AdminProducts = () => {
   };
 
   const handleDelete = async (id: string) => {
-    const cleanId = String(id ?? '').trim();
+    const cleanId = safeString(id);
     if (!cleanId || cleanId === ':p') {
       toast({ title: 'Não foi possível excluir: ID inválido.', variant: 'destructive' });
       return;
@@ -297,7 +305,7 @@ const AdminProducts = () => {
                 <div>
                   <Label>Categoria *</Label>
                   <Select
-                    value={form.categoryId}
+                    value={String(form.categoryId ?? '')}
                     onValueChange={v => setForm(p => ({ ...p, categoryId: v, subcategoryId: '' }))}
                   >
                     <SelectTrigger>
@@ -315,7 +323,10 @@ const AdminProducts = () => {
 
                 <div>
                   <Label>Subcategoria</Label>
-                  <Select value={form.subcategoryId} onValueChange={v => setForm(p => ({ ...p, subcategoryId: v }))}>
+                  <Select
+                    value={String(form.subcategoryId ?? '')}
+                    onValueChange={v => setForm(p => ({ ...p, subcategoryId: v }))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecionar" />
                     </SelectTrigger>
