@@ -199,3 +199,5 @@ const AdminCategories = () => {
     </div>
   );
 };
+
+export default AdminCategories;
