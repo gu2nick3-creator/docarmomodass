@@ -80,10 +80,42 @@ const CheckoutPage = () => {
 
     setLoading(true);
     try {
-      // Gera um ID simples pro pedido (o backend usa external_reference)
-      // Depois você pode trocar por um orderId vindo do /orders
-      const orderId = Date.now().toString();
+      // 1) cria o pedido REAL no backend
+      const orderItems = items.map(i => ({
+        title: i.product.name,
+        quantity: Number(i.quantity || 1),
+        unit_price: Number(i.product.price || 0),
+        productId: i.product.id,
+        selectedSize: i.selectedSize,
+        selectedColor: i.selectedColor,
+      }));
 
+      const order = await request<{ id: string }>('/orders', {
+        method: 'POST',
+        body: {
+          total: Number(total || 0),
+          items: orderItems,
+          customer: {
+            name: form.name.trim(),
+            email: form.email.trim(),
+            cpf: form.cpf.trim(),
+            phone: form.phone.trim(),
+            address: {
+              street: form.street.trim(),
+              number: form.number.trim(),
+              complement: form.complement.trim(),
+              neighborhood: form.neighborhood.trim(),
+              city: form.city.trim(),
+              state: form.state.trim(),
+              cep: form.cep.trim(),
+            },
+          },
+        },
+      });
+
+      const orderId = order.id;
+
+      // 2) cria a preferência no Mercado Pago usando o orderId REAL
       const mpItems = items.map(i => ({
         title: i.product.name,
         quantity: Number(i.quantity || 1),
@@ -97,7 +129,7 @@ const CheckoutPage = () => {
       }>('/mercadopago/preference', {
         method: 'POST',
         body: {
-          orderId,
+          orderId, // <- agora é o ID real do banco
           items: mpItems,
           customer: { name: form.name.trim(), email: form.email.trim() },
         },
@@ -115,13 +147,10 @@ const CheckoutPage = () => {
 
       toast({ title: 'Redirecionando para o Mercado Pago...' });
 
-      // opcional: salvar localmente o orderId pra tela de retorno
       localStorage.setItem('last_order_id', orderId);
       localStorage.setItem('last_order_total', String(total || 0));
 
-      // Limpa o carrinho depois que a preferência foi criada
       clearCart();
-
       window.location.href = link;
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Erro ao iniciar pagamento no Mercado Pago';
